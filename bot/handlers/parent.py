@@ -8,7 +8,7 @@ from bot.database import crud
 from bot.database.session import get_session
 from bot.keyboards import parent_kb
 from bot.services.notifications import get_bot_username
-from bot.states.parent_states import BugReportStates, CancelLessonStates, FeedbackStates
+from bot.states.parent_states import BugReportStates, CancelLessonStates, FeedbackStates, RescheduleRequestStates
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -118,20 +118,84 @@ async def student_schedule(callback: CallbackQuery) -> None:
         lessons = await crud.get_upcoming_lessons(session, student_id)
 
     if not lessons:
-        text = f"📅 Расписание <b>{student.name}</b>\n\nПредстоящих уроков нет."
+        await callback.message.edit_text(
+            f"📅 Расписание <b>{student.name}</b>\n\nПредстоящих уроков нет.",
+            reply_markup=parent_kb.back_to_cabinet_keyboard(student_id),
+            parse_mode="HTML"
+        )
     else:
-        lines = [f"📅 Расписание <b>{student.name}</b>\n"]
-        for lesson in lessons:
-            dt = lesson.scheduled_at
-            lines.append(f"• {dt.strftime('%d.%m.%Y %H:%M')}")
-        text = "\n".join(lines)
+        await callback.message.edit_text(
+            f"📅 Расписание <b>{student.name}</b>\n\nНажмите 🔄 чтобы запросить перенос урока:",
+            reply_markup=parent_kb.schedule_keyboard(student_id, lessons),
+            parse_mode="HTML"
+        )
+    await callback.answer()
 
+
+@router.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery) -> None:
+    """Заглушка для информационных кнопок без действия."""
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("par:reschedule_request:"))
+async def reschedule_request_start(callback: CallbackQuery, state: FSMContext) -> None:
+    """Родитель нажал Перенести — просим написать желаемое время."""
+    parts = callback.data.split(":")
+    lesson_id = int(parts[2])
+    student_id = int(parts[3])
+
+    async with get_session() as session:
+        lesson = await crud.get_lesson_by_id(session, lesson_id)
+        if not lesson:
+            await callback.answer("Урок не найден.", show_alert=True)
+            return
+        time_str = lesson.scheduled_at.strftime("%d.%m.%Y %H:%M")
+
+    await state.set_state(RescheduleRequestStates.waiting_time)
+    await state.update_data(lesson_id=lesson_id, lesson_time=time_str, student_id=student_id)
     await callback.message.edit_text(
-        text,
+        f"🔄 <b>Запрос переноса урока</b>\n\n"
+        f"Урок: <b>{time_str}</b>\n\n"
+        f"Напишите удобное для вас время или несколько вариантов:",
         reply_markup=parent_kb.back_to_cabinet_keyboard(student_id),
         parse_mode="HTML"
     )
     await callback.answer()
+
+
+@router.message(RescheduleRequestStates.waiting_time)
+async def reschedule_request_received(message: Message, state: FSMContext) -> None:
+    """Получили пожелание по времени — отправляем менеджеру."""
+    data = await state.get_data()
+    lesson_id = data["lesson_id"]
+    lesson_time = data["lesson_time"]
+    student_id = data["student_id"]
+
+    user = message.from_user
+    parent_info = f"@{user.username}" if user.username else f"tg_id={user.id}"
+
+    async with get_session() as session:
+        parent = await crud.get_parent_by_telegram_id(session, user.id)
+        parent_name = parent.name if parent else user.full_name
+        student = await crud.get_student_by_id(session, student_id)
+        student_name = student.name if student else "—"
+
+    from bot.services.notifications import notify_manager_reschedule_request
+    await notify_manager_reschedule_request(
+        parent_name=parent_name,
+        parent_info=parent_info,
+        student_name=student_name,
+        lesson_time=lesson_time,
+        desired_time=message.text.strip(),
+    )
+
+    await state.clear()
+    await message.answer(
+        "✅ Запрос на перенос отправлен менеджеру!\n\n"
+        "Мы свяжемся с вами для подтверждения нового времени.",
+        reply_markup=parent_kb.back_to_cabinet_keyboard(student_id)
+    )
 
 
 @router.callback_query(F.data.startswith("par:history:"))

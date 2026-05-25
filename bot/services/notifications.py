@@ -354,6 +354,25 @@ async def notify_manager_report_requested(
     )
 
 
+async def notify_manager_reschedule_request(
+    parent_name: str,
+    parent_info: str,
+    student_name: str,
+    lesson_time: str,
+    desired_time: str,
+) -> None:
+    """Родитель запросил перенос урока — уведомляем менеджера."""
+    await _send(
+        config.MANAGER_TELEGRAM_ID,
+        f"🔄 <b>Запрос на перенос урока</b>\n\n"
+        f"Родитель: <b>{parent_name}</b> ({parent_info})\n"
+        f"Ученик: <b>{student_name}</b>\n"
+        f"Текущее время: <b>{lesson_time}</b>\n\n"
+        f"Желаемое время:\n{desired_time}",
+        parse_mode="HTML"
+    )
+
+
 async def send_daily_schedule(lessons: list) -> None:
     """Утренний отчёт менеджеру — все уроки на сегодня."""
     if not lessons:

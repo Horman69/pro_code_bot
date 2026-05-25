@@ -29,3 +29,8 @@ class TrialSignupStates(StatesGroup):
 class BugReportStates(StatesGroup):
     """Пользователь сообщает об ошибке бота."""
     waiting_description = State()
+
+
+class RescheduleRequestStates(StatesGroup):
+    """Родитель запрашивает перенос урока."""
+    waiting_time = State()

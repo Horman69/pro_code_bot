@@ -123,6 +123,19 @@ def confirm_report_request_keyboard(student_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def schedule_keyboard(student_id: int, lessons: list) -> InlineKeyboardMarkup:
+    """Расписание с кнопкой переноса у каждого урока."""
+    builder = InlineKeyboardBuilder()
+    for lesson in lessons:
+        dt = lesson.scheduled_at.strftime("%d.%m %H:%M")
+        builder.row(
+            InlineKeyboardButton(text=f"📅 {dt}", callback_data=f"noop"),
+            InlineKeyboardButton(text="🔄 Перенести", callback_data=f"par:reschedule_request:{lesson.id}:{student_id}"),
+        )
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"par:cabinet:{student_id}"))
+    return builder.as_markup()
+
+
 def back_to_cabinet_keyboard(student_id: int) -> InlineKeyboardMarkup:
     """Кнопка назад в ЛК ученика — для разделов внутри кабинета."""
     builder = InlineKeyboardBuilder()
