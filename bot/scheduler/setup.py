@@ -1,6 +1,7 @@
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from bot import config
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,8 @@ def create_scheduler() -> AsyncIOScheduler:
         "default": SQLAlchemyJobStore(url="sqlite:///data/scheduler.db")
     }
 
-    scheduler = AsyncIOScheduler(jobstores=jobstores)
+    # timezone=Moscow — все run_date и cron интерпретируются как московское время
+    scheduler = AsyncIOScheduler(jobstores=jobstores, timezone=str(config.TIMEZONE))
     return scheduler
 
 
